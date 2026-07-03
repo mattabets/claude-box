@@ -85,7 +85,7 @@ top-left tile alongside your browser chats, and **⌥⌘R** includes it when
 re-tiling, but only when the desktop app is already open. If the desktop app is
 closed, the board uses that slot for another browser chat so the default fresh
 open stays at four tiles. If the desktop app is minimized, the script
-unminimizes it and includes it in the grid.
+reserves one of those four slots, unminimizes it, and includes it in the grid.
 
 Each **⌥⌘C** press is capped by `BOARD_TILE_LIMIT`. With the default settings,
 that means each press opens either three browser chats plus the desktop app, or

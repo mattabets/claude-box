@@ -182,6 +182,21 @@ local function isBrowserApp(app)
   return expectedBundleID ~= nil and app:bundleID() == expectedBundleID
 end
 
+local function isDesktopWindow(win)
+  local app = win and win:application()
+  if not app then return false end
+
+  return app:bundleID() == DESKTOP_BUNDLE_ID or app:name() == DESKTOP_APP
+end
+
+local function rememberedDesktopWindow()
+  for _, win in ipairs(BOARD_WINDOWS) do
+    if isLiveWindow(win) and isDesktopWindow(win) then return win end
+  end
+
+  return nil
+end
+
 local function browserApps()
   local apps = {}
   local seen = {}
@@ -266,17 +281,6 @@ local function rememberBoardWindow(win)
   BOARD_WINDOWS[#BOARD_WINDOWS + 1] = win
 end
 
-local function isRememberedWindow(win)
-  local key = isLiveWindow(win) and windowKey(win) or nil
-  if not key then return false end
-
-  for _, existing in ipairs(BOARD_WINDOWS) do
-    if isLiveWindow(existing) and windowKey(existing) == key then return true end
-  end
-
-  return false
-end
-
 local function activeBoardWindows(limit)
   local wins = {}
   local seen = {}
@@ -348,11 +352,30 @@ local function openBrowserTile(url, idx, n, screen)
   end)
 end
 
+local function placeDesktopTile(idx, n, screen, attemptsLeft)
+  attemptsLeft = attemptsLeft or math.ceil(OPEN_MAX_WAIT / OPEN_RETRY_INTERVAL)
+
+  local win = desktopWindow()
+  if win then
+    win:setFrame(cellFrame(idx, n, screen))
+    rememberBoardWindow(win)
+    return
+  end
+
+  if attemptsLeft > 0 then
+    hs.timer.doAfter(OPEN_RETRY_INTERVAL, function()
+      placeDesktopTile(idx, n, screen, attemptsLeft - 1)
+    end)
+  else
+    hs.alert.show("Claude desktop window not found")
+  end
+end
+
 -- Open a fresh board and tile each window as it appears.
 local function openBoard()
   local screen = hs.screen.mainScreen()
-  local dwin = desktopWindow()
-  local wantsDesktop = dwin ~= nil and not isRememberedWindow(dwin) and BOARD_TILE_LIMIT > 0
+  local dapp = INCLUDE_DESKTOP and desktopApp() or nil
+  local wantsDesktop = dapp ~= nil and not rememberedDesktopWindow() and BOARD_TILE_LIMIT > 0
   local offset = wantsDesktop and 1 or 0
   local browserCount = math.min(#CLAUDE_URLS, math.max(BOARD_TILE_LIMIT - offset, 0))
   local n = browserCount + offset
@@ -360,8 +383,7 @@ local function openBoard()
   if n == 0 then return end
 
   if wantsDesktop then
-    dwin:setFrame(cellFrame(0, n, screen))
-    rememberBoardWindow(dwin)
+    placeDesktopTile(0, n, screen)
   end
 
   for i = 1, browserCount do
