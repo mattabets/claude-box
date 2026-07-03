@@ -78,12 +78,19 @@ end
 local SPAWN_STAGGER = 0.6   -- seconds between opening each window
 local PLACE_DELAY   = 0.45  -- seconds to wait for a window before moving it
 
--- Even-ish grid (cols x rows) for n windows. The fresh-open path caps this
--- at BOARD_TILE_LIMIT, so the default board is a steady 2x2.
+-- Even-ish grid (cols x rows) for n windows. Prefer exact factor grids
+-- when possible, so 8 windows become 4x2 instead of 3x3 with an empty cell.
 local function gridDims(n)
   local cols = math.ceil(math.sqrt(n))
-  local rows = math.ceil(n / cols)
-  return cols, rows
+
+  for candidate = cols, n do
+    if n % candidate == 0 then
+      local rows = n / candidate
+      if rows > 1 or n <= 2 then return candidate, rows end
+    end
+  end
+
+  return cols, math.ceil(n / cols)
 end
 
 -- Frame for cell index i (0-based) on the given screen.
@@ -183,16 +190,22 @@ local function isClaudeBrowserWindow(win)
     or title:match("^claude%s%-%s") ~= nil
 end
 
-local function rememberBoardWindow(slot, win)
-  if isLiveWindow(win) then BOARD_WINDOWS[slot] = win end
+local function rememberBoardWindow(win)
+  if not isLiveWindow(win) then return end
+
+  local key = win:id()
+  for _, existing in ipairs(BOARD_WINDOWS) do
+    if isLiveWindow(existing) and existing:id() == key then return end
+  end
+
+  BOARD_WINDOWS[#BOARD_WINDOWS + 1] = win
 end
 
 local function activeBoardWindows(limit)
   local wins = {}
   local seen = {}
 
-  for slot = 1, BOARD_TILE_LIMIT do
-    local win = BOARD_WINDOWS[slot]
+  for _, win in ipairs(BOARD_WINDOWS) do
     local key = isLiveWindow(win) and win:id() or nil
     if key and not seen[key] then
       wins[#wins + 1] = prepareWindow(win)
@@ -201,6 +214,7 @@ local function activeBoardWindows(limit)
     end
   end
 
+  BOARD_WINDOWS = wins
   return wins
 end
 
@@ -246,15 +260,13 @@ local function openBrowserTile(url, idx, n, screen)
 
     if win then
       win:setFrame(cellFrame(idx, n, screen))
-      rememberBoardWindow(idx + 1, win)
+      rememberBoardWindow(win)
     end
   end)
 end
 
 -- Open a fresh board and tile each window as it appears.
 local function openBoard()
-  BOARD_WINDOWS = {}
-
   local screen = hs.screen.mainScreen()
   local dwin = desktopWindow()
   local wantsDesktop = dwin ~= nil and BOARD_TILE_LIMIT > 0
@@ -266,7 +278,7 @@ local function openBoard()
 
   if wantsDesktop then
     dwin:setFrame(cellFrame(0, n, screen))
-    rememberBoardWindow(1, dwin)
+    rememberBoardWindow(dwin)
   end
 
   for i = 1, browserCount do
@@ -281,7 +293,7 @@ end
 -- Re-tile Claude windows already open (desktop app first, then browser).
 local function retileExisting()
   local screen = hs.screen.mainScreen()
-  local wins = activeBoardWindows(BOARD_TILE_LIMIT)
+  local wins = activeBoardWindows()
   local seen = {}
 
   for _, win in ipairs(wins) do
@@ -291,7 +303,7 @@ local function retileExisting()
 
   local function addWindow(win)
     local key = isLiveWindow(win) and win:id() or nil
-    if key and not seen[key] and #wins < BOARD_TILE_LIMIT then
+    if key and not seen[key] then
       wins[#wins + 1] = win
       seen[key] = true
     end
@@ -299,8 +311,7 @@ local function retileExisting()
 
   addWindow(desktopWindow())
 
-  local browserLimit = math.max(BOARD_TILE_LIMIT - #wins, 0)
-  for _, win in ipairs(claudeBrowserWindows(browserLimit)) do
+  for _, win in ipairs(claudeBrowserWindows()) do
     addWindow(win)
   end
 
@@ -311,7 +322,7 @@ local function retileExisting()
 
   for i, w in ipairs(wins) do
     w:setFrame(cellFrame(i - 1, #wins, screen))
-    rememberBoardWindow(i, w)
+    rememberBoardWindow(w)
   end
 
   hs.alert.show(string.format("Retiled %d Claude board window%s", #wins, #wins == 1 and "" or "s"))
