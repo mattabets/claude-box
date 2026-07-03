@@ -89,17 +89,19 @@ by adding `--user-data-dir="$HOME/.claude-board-chrome"` to the `open` command i
 
 With `INCLUDE_DESKTOP = true`, **⌥⌘C** places the Claude desktop app as the
 top-left tile alongside your browser chats, and **⌥⌘R** includes it when
-re-tiling, but only when the desktop app is already open. If the desktop app is
-closed, the board uses that slot for another browser chat so the default fresh
-open stays at four tiles. If the desktop app is minimized, the script
-reserves one of those four slots, unminimizes it, and includes it in the grid.
+re-tiling, but only when the desktop app has a window open. If the desktop app
+has no window — whether it is fully quit or just idling in the background with
+its window closed — the board uses that slot for another browser chat, so a fresh
+open stays at four tiles. If the desktop app is minimized, its window still
+counts: the script reserves one of those four slots, unminimizes it, and includes
+it in the grid.
 
 Each **⌥⌘C** press is capped by `BOARD_TILE_LIMIT`. With the default settings,
 that means each press opens either three browser chats plus the desktop app, or
-four browser chats when the desktop app is not open. Whenever the desktop app is
-open, every **⌥⌘C** press reserves its slot and places it — unminimizing it first
-if needed — so it is always included in the grid regardless of window state, even
-on later presses. Pressing **⌥⌘C** again adds another batch; **⌥⌘R** then lays out
+four browser chats when the desktop app has no window open. Whenever the desktop
+app has a window, every **⌥⌘C** press reserves its slot and places it —
+unminimizing it first if needed — so it is always included in the grid, even on
+later presses. Pressing **⌥⌘C** again adds another batch; **⌥⌘R** then lays out
 the full board.
 
 Two things to know:

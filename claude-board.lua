@@ -174,6 +174,24 @@ local function desktopWindow()
   return win
 end
 
+-- Does the desktop app actually have a window we could tile? This is a pure
+-- check with no side effects — it does NOT activate or unhide the app.
+--
+-- The distinction matters: the Claude desktop app keeps its process running in
+-- the background after you close its window, so desktopApp() (which only reports
+-- whether the process is alive) stays truthy even when there is nothing to
+-- place. A minimized window still counts as present here — it lives in
+-- allWindows() and gets unminimized when placed — matching "reserve the slot
+-- when minimized".
+local function desktopHasWindow()
+  if not INCLUDE_DESKTOP then return false end
+
+  local app = desktopApp()
+  if not app then return false end
+
+  return #app:allWindows() > 0
+end
+
 local function isBrowserApp(app)
   if not app then return false end
   if app:name() == BROWSER then return true end
@@ -423,12 +441,13 @@ end
 -- Open a fresh board and tile each window as it appears.
 local function openBoard()
   local screen = hs.screen.mainScreen()
-  -- Include the desktop app whenever it is open, regardless of window state.
-  -- placeDesktopTile unminimizes it if needed, so a minimized app still claims
-  -- its slot. Only when the app is not running does the board fall back to
-  -- filling every slot with browser chats.
-  local dapp = INCLUDE_DESKTOP and desktopApp() or nil
-  local wantsDesktop = dapp ~= nil and BOARD_TILE_LIMIT > 0
+  -- Include the desktop app only when it actually has a window to tile (a
+  -- minimized one still counts — placeDesktopTile unminimizes it). The app
+  -- process lingers in the background with no windows after you close it, so
+  -- checking the process alone would reserve a slot with nothing to place,
+  -- opening only three browser chats and leaving an empty cell. When the desktop
+  -- app has no window, the board fills every slot with browser chats instead.
+  local wantsDesktop = BOARD_TILE_LIMIT > 0 and desktopHasWindow()
   local offset = wantsDesktop and 1 or 0
   local browserCount = math.min(#CLAUDE_URLS, math.max(BOARD_TILE_LIMIT - offset, 0))
   local n = browserCount + offset
