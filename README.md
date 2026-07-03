@@ -36,6 +36,13 @@ even grid on your focused screen, driven by two hotkeys.
    (System Settings → Privacy & Security → Accessibility). It needs this to move
    windows — nothing else. No network, no data access.
 
+   The first time you re-tile or close the board, macOS also asks to let
+   Hammerspoon **control your browser** (Automation permission). This lets the
+   board ask Chrome/Edge which windows are on `claude.ai`, so surfaces like
+   `claude.ai/code` and `claude.ai/design` are recognized regardless of how
+   their tab is titled. If you decline, the board still works — it just falls
+   back to matching windows by title (`… - Claude`).
+
 4. Reload the config from the Hammerspoon menu-bar icon (**Reload Config**). You
    should see a "Claude board loaded" alert.
 
@@ -119,6 +126,15 @@ Chrome tabs are not added just because they were focused. **⌥⌘R** re-tiles t
 growing remembered set, then scans every running Chrome instance as a fallback.
 The close hotkey uses the same Claude-window filter, so unrelated Chrome windows
 are left alone.
+
+To decide whether a browser window belongs to the board, the script asks the
+browser (via AppleScript) which windows have a `claude.ai` tab in front, and
+matches on that. This recognizes every claude.ai surface — `/new`, `/code`,
+`/design`, `/chat` — no matter how the tab is titled, while leaving non-claude.ai
+pages (say, a GitHub repo called `claude-board`) alone. Windows found this way
+are unminimized before they're tiled, so a minimized or backgrounded chat still
+lands in the grid. If Hammerspoon lacks Automation permission for the browser,
+detection falls back to matching window titles that end in `- Claude`.
 
 ## Why this approach
 

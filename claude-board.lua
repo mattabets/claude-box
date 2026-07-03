@@ -242,17 +242,80 @@ local function newBrowserWindow(previousIds)
   return nil
 end
 
-local function isClaudeBrowserWindow(win)
-  local title = (win:title() or ""):lower()
+-- Strip a trailing " - <Browser>" (e.g. " - Google Chrome") that some builds
+-- append to window titles, so a title reported by the browser's AppleScript
+-- lines up with the one Hammerspoon reports for the same window.
+local function stripBrowserSuffix(title)
+  local suffix = " - " .. BROWSER
+  if #title >= #suffix and title:sub(-#suffix):lower() == suffix:lower() then
+    return title:sub(1, #title - #suffix)
+  end
+  return title
+end
 
-  -- Claude app-mode browser windows are usually "New chat - Claude" or
-  -- "<conversation title> - Claude". Some Chrome builds append the browser name.
-  -- Avoid broad substring matching so pages like GitHub repos named
-  -- "claude-board" do not get swept into the grid.
+-- Conservative title match for the common chat windows ("New chat - Claude").
+-- This is the fallback signal when the browser can't be queried for URLs. Kept
+-- narrow so a page like a GitHub repo titled "claude-board" is not swept in, but
+-- it does NOT catch surfaces whose tab is titled "Claude Code" / "Claude Design"
+-- — the URL check below is what covers those.
+local function matchesClaudeTitleHeuristic(title)
   return title == "claude"
     or title:match("%s%-%sclaude$") ~= nil
     or title:match("%s%-%sclaude%s%-%s") ~= nil
     or title:match("^claude%s%-%s") ~= nil
+end
+
+-- Ask the configured browser which of its windows have a claude.ai tab in front
+-- and return their (normalized) titles as a set. This is the URL-based signal:
+-- it recognizes any claude.ai surface — /new, /code, /design, /chat — regardless
+-- of how the tab is titled, and naturally ignores non-claude.ai pages (a
+-- github.com repo called "claude-board" is not matched).
+--
+-- Requires Hammerspoon to hold Automation permission for the browser (macOS
+-- prompts once). If that is denied, or the browser isn't running, this returns
+-- an empty set and detection falls back to matchesClaudeTitleHeuristic. We skip
+-- the query entirely when no browser is running so we never launch one just to
+-- ask. Only the active tab of each window is inspected, which is exactly right
+-- for the board's single-tab app-mode windows.
+local function claudeUrlTitleSet()
+  if #browserApps() == 0 then return {} end
+
+  local script = string.format([[
+tell application "%s"
+  set outText to ""
+  repeat with w in windows
+    try
+      if (URL of active tab of w) contains "claude.ai" then
+        set outText to outText & (title of w) & linefeed
+      end if
+    end try
+  end repeat
+  return outText
+end tell
+]], BROWSER)
+
+  local ok, result = hs.osascript.applescript(script)
+  local titles = {}
+  if ok and type(result) == "string" then
+    for line in result:gmatch("[^\r\n]+") do
+      titles[stripBrowserSuffix(line):lower()] = true
+    end
+  end
+
+  return titles
+end
+
+-- Is this browser window a Claude board window? Prefer the URL signal: if the
+-- browser reported a claude.ai window with this title, it counts whatever the
+-- title text is. Otherwise fall back to the title heuristic.
+local function isClaudeBrowserWindow(win, urlTitles)
+  local raw = win:title() or ""
+
+  if urlTitles and urlTitles[stripBrowserSuffix(raw):lower()] then
+    return true
+  end
+
+  return matchesClaudeTitleHeuristic(raw:lower())
 end
 
 local function rememberBoardWindow(win)
@@ -286,12 +349,13 @@ end
 local function claudeBrowserWindows(limit)
   local wins = {}
   local seen = {}
+  local urlTitles = claudeUrlTitleSet()
 
   for _, app in ipairs(browserApps()) do
     for _, win in ipairs(app:allWindows()) do
       local key = win:id() or tostring(win)
-      if not seen[key] and isClaudeBrowserWindow(win) then
-        wins[#wins + 1] = win
+      if not seen[key] and isClaudeBrowserWindow(win, urlTitles) then
+        wins[#wins + 1] = prepareWindow(win)
         seen[key] = true
         if limit and #wins >= limit then return wins end
       end
@@ -301,8 +365,8 @@ local function claudeBrowserWindows(limit)
   for _, win in ipairs(hs.window.allWindows()) do
     local app = win:application()
     local key = win:id() or tostring(win)
-    if isBrowserApp(app) and not seen[key] and isClaudeBrowserWindow(win) then
-      wins[#wins + 1] = win
+    if isBrowserApp(app) and not seen[key] and isClaudeBrowserWindow(win, urlTitles) then
+      wins[#wins + 1] = prepareWindow(win)
       seen[key] = true
       if limit and #wins >= limit then return wins end
     end
