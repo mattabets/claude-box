@@ -77,20 +77,14 @@ end
 ------------------------------------------------------------------------
 local SPAWN_STAGGER = 0.6   -- seconds between opening each window
 local PLACE_DELAY   = 0.45  -- seconds to wait for a window before moving it
+local OPEN_RETRY_INTERVAL = 0.25
+local OPEN_MAX_WAIT       = 3.0
 
--- Even-ish grid (cols x rows) for n windows. Prefer exact factor grids
--- when possible, so 8 windows become 4x2 instead of 3x3 with an empty cell.
+-- Square grid surface (cols x rows) for n windows. This keeps the board
+-- visually even as it grows: 2x2, 3x3, 4x4, 5x5, etc.
 local function gridDims(n)
-  local cols = math.ceil(math.sqrt(n))
-
-  for candidate = cols, n do
-    if n % candidate == 0 then
-      local rows = n / candidate
-      if rows > 1 or n <= 2 then return candidate, rows end
-    end
-  end
-
-  return cols, math.ceil(n / cols)
+  local side = math.ceil(math.sqrt(n))
+  return side, side
 end
 
 -- Frame for cell index i (0-based) on the given screen.
@@ -149,6 +143,7 @@ local function desktopWindow()
   if not app then return nil end
 
   app:unhide()
+  app:activate(true)
   return firstUsableWindow(app)
 end
 
@@ -177,6 +172,49 @@ local function browserApps()
   return apps
 end
 
+local function browserWindowIds()
+  local ids = {}
+
+  for _, app in ipairs(browserApps()) do
+    for _, win in ipairs(app:allWindows()) do
+      local id = win:id()
+      if id then ids[id] = true end
+    end
+  end
+
+  for _, win in ipairs(hs.window.allWindows()) do
+    local app = win:application()
+    local id = win:id()
+    if id and isBrowserApp(app) then ids[id] = true end
+  end
+
+  return ids
+end
+
+local function newBrowserWindow(previousIds)
+  local seen = {}
+
+  for _, app in ipairs(browserApps()) do
+    for _, win in ipairs(app:allWindows()) do
+      local id = win:id()
+      if id and not previousIds[id] and not seen[id] then
+        return win
+      end
+      if id then seen[id] = true end
+    end
+  end
+
+  for _, win in ipairs(hs.window.allWindows()) do
+    local app = win:application()
+    local id = win:id()
+    if id and isBrowserApp(app) and not previousIds[id] and not seen[id] then
+      return win
+    end
+  end
+
+  return nil
+end
+
 local function isClaudeBrowserWindow(win)
   local title = (win:title() or ""):lower()
 
@@ -199,6 +237,17 @@ local function rememberBoardWindow(win)
   end
 
   BOARD_WINDOWS[#BOARD_WINDOWS + 1] = win
+end
+
+local function isRememberedWindow(win)
+  local key = isLiveWindow(win) and win:id() or nil
+  if not key then return false end
+
+  for _, existing in ipairs(BOARD_WINDOWS) do
+    if isLiveWindow(existing) and existing:id() == key then return true end
+  end
+
+  return false
 end
 
 local function activeBoardWindows(limit)
@@ -247,21 +296,28 @@ local function claudeBrowserWindows(limit)
 end
 
 local function openBrowserTile(url, idx, n, screen)
+  local previousIds = browserWindowIds()
   openAppWindow(url)
-  hs.timer.doAfter(PLACE_DELAY, function()
-    local win = hs.window.focusedWindow()
-    local focusedApp = win and win:application()
-    if not isBrowserApp(focusedApp) then
-      for _, app in ipairs(browserApps()) do
-        win = app:focusedWindow()
-        if win then break end
-      end
-    end
 
+  local function placeOpenedWindow(attemptsLeft)
+    local win = newBrowserWindow(previousIds)
     if win then
       win:setFrame(cellFrame(idx, n, screen))
       rememberBoardWindow(win)
+      return
     end
+
+    if attemptsLeft > 0 then
+      hs.timer.doAfter(OPEN_RETRY_INTERVAL, function()
+        placeOpenedWindow(attemptsLeft - 1)
+      end)
+    else
+      hs.alert.show("Claude browser window not found")
+    end
+  end
+
+  hs.timer.doAfter(PLACE_DELAY, function()
+    placeOpenedWindow(math.ceil(OPEN_MAX_WAIT / OPEN_RETRY_INTERVAL))
   end)
 end
 
@@ -269,7 +325,7 @@ end
 local function openBoard()
   local screen = hs.screen.mainScreen()
   local dwin = desktopWindow()
-  local wantsDesktop = dwin ~= nil and BOARD_TILE_LIMIT > 0
+  local wantsDesktop = dwin ~= nil and not isRememberedWindow(dwin) and BOARD_TILE_LIMIT > 0
   local offset = wantsDesktop and 1 or 0
   local browserCount = math.min(#CLAUDE_URLS, math.max(BOARD_TILE_LIMIT - offset, 0))
   local n = browserCount + offset
@@ -293,13 +349,8 @@ end
 -- Re-tile Claude windows already open (desktop app first, then browser).
 local function retileExisting()
   local screen = hs.screen.mainScreen()
-  local wins = activeBoardWindows()
+  local wins = {}
   local seen = {}
-
-  for _, win in ipairs(wins) do
-    local key = win:id()
-    if key then seen[key] = true end
-  end
 
   local function addWindow(win)
     local key = isLiveWindow(win) and win:id() or nil
@@ -310,6 +361,10 @@ local function retileExisting()
   end
 
   addWindow(desktopWindow())
+
+  for _, win in ipairs(activeBoardWindows()) do
+    addWindow(win)
+  end
 
   for _, win in ipairs(claudeBrowserWindows()) do
     addWindow(win)

@@ -68,6 +68,8 @@ All knobs live at the top of `claude-board.lua`:
 - `BROWSER` — `"Google Chrome"` by default. Swap to `"Microsoft Edge"` for Edge.
 - `SPAWN_STAGGER` (0.6s) — delay between opening each browser window.
 - `PLACE_DELAY` (0.45s) — how long to wait for a window to appear before moving it.
+- `OPEN_RETRY_INTERVAL` (0.25s) and `OPEN_MAX_WAIT` (3.0s) — how long to retry
+  when waiting for a newly opened browser window to appear.
 
 If windows don't reliably land in their cells, bump `SPAWN_STAGGER` and
 `PLACE_DELAY` — the timing depends on your machine's speed.
@@ -86,8 +88,10 @@ open stays at four tiles.
 
 Each **⌥⌘C** press is capped by `BOARD_TILE_LIMIT`. With the default settings,
 that means each press opens either three browser chats plus the desktop app, or
-four browser chats when the desktop app is not open. Pressing **⌥⌘C** again adds
-another batch; **⌥⌘R** then lays out the full board.
+four browser chats when the desktop app is not open. Once the desktop app is
+already remembered on the board, later **⌥⌘C** presses use all four slots for new
+browser chats. Pressing **⌥⌘C** again adds another batch; **⌥⌘R** then lays out
+the full board.
 
 Two things to know:
 
@@ -102,18 +106,17 @@ Two things to know:
 
 ## How it works
 
-The grid prefers exact factor layouts when possible, so 8 windows become 4x2
-instead of 3x3 with an empty slot. Each fresh batch is capped by
-`BOARD_TILE_LIMIT`; when re-tiling existing windows, the script lays out every
-remembered or discovered Claude board window and ignores non-Claude browser
-windows. Browser tiles open as app-mode windows
+The grid uses a square board surface: 2x2, 3x3, 4x4, 5x5, and so on. Each fresh
+batch is capped by `BOARD_TILE_LIMIT`; when re-tiling existing windows, the
+script lays out every remembered or discovered Claude board window and ignores
+non-Claude browser windows. Browser tiles open as app-mode windows
 (`open -na <browser> --args --app='<url>'`) for clean frames with no tabs or
-toolbar, then get moved into their cells. The board remembers windows opened by
-**⌥⌘C**, so **⌥⌘R** can re-tile that growing set instead of guessing from the
-sidebar/window list. Re-tiling and closing also scan every running Chrome
-instance as a fallback, so app-mode windows are handled even when regular Chrome
-windows are also open. The close hotkey uses the same Claude-window filter, so
-unrelated Chrome windows are left alone.
+toolbar, then get moved into their cells. The board snapshots browser windows
+before each open and remembers the newly created Claude window, so unrelated
+Chrome tabs are not added just because they were focused. **⌥⌘R** re-tiles that
+growing remembered set, then scans every running Chrome instance as a fallback.
+The close hotkey uses the same Claude-window filter, so unrelated Chrome windows
+are left alone.
 
 ## Why this approach
 
