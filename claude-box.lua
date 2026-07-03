@@ -1,12 +1,12 @@
 -- ~/.hammerspoon/init.lua
--- Claude board: open a set of claude.ai chats as app-mode windows and tile them.
+-- Claude Box: open a set of claude.ai chats as app-mode windows and tile them.
 -- Optionally include the Claude desktop app as one of the tiles.
 -- Layout only — no status, no notifications (by design).
 --
 -- Hotkeys:
 --   Opt+Cmd+C  -> open your standing set of chats and tile them into a grid
 --   Opt+Cmd+R  -> re-tile Claude windows that are already open
---   Opt+Cmd+X  -> close Claude board windows
+--   Opt+Cmd+X  -> close Claude Box windows
 
 hs.window.animationDuration = 0  -- instant snap, no slide animation
 
@@ -24,13 +24,13 @@ local CLAUDE_URLS = {
 }
 
 -- How many tiles a fresh (cold-start) Opt+Cmd+C should create.
--- The default 4 keeps the board in a steady 2x2. If the desktop app is
+-- The default 4 keeps the box in a steady 2x2. If the desktop app is
 -- already open and included, it counts as one of these tiles (1 desktop +
--- 3 chats = 4). Keep this even so the board starts even.
-local BOARD_TILE_LIMIT = 4
+-- 3 chats = 4). Keep this even so the box starts even.
+local BOX_TILE_LIMIT = 4
 
--- How many new chats each later Opt+Cmd+C press adds once a board already
--- exists. Keep this even so the board stays even as it grows: 4 -> 8 -> 12.
+-- How many new chats each later Opt+Cmd+C press adds once a box already
+-- exists. Keep this even so the box stays even as it grows: 4 -> 8 -> 12.
 local ADD_BATCH = 4
 
 ------------------------------------------------------------------------
@@ -60,9 +60,9 @@ local DESKTOP_APP     = "Claude"
 --    Chrome/Edge support --app. Safari cannot do CLI app-mode.
 --    For Edge: replace "Google Chrome" with "Microsoft Edge".
 --
---    Want the board isolated from your everyday browsing? Add a dedicated
+--    Want the box isolated from your everyday browsing? Add a dedicated
 --    profile dir (you'll log into claude.ai once inside it):
---      ... --args --user-data-dir="$HOME/.claude-board-chrome" --app='%s'
+--      ... --args --user-data-dir="$HOME/.claude-box-chrome" --app='%s'
 ------------------------------------------------------------------------
 local BROWSER = "Google Chrome"
 local BROWSER_BUNDLE_IDS = {
@@ -70,7 +70,7 @@ local BROWSER_BUNDLE_IDS = {
   ["Microsoft Edge"] = "com.microsoft.edgemac",
 }
 
-local BOARD_WINDOWS = {}
+local BOX_WINDOWS = {}
 
 local function openAppWindow(url)
   hs.execute(string.format(
@@ -85,7 +85,7 @@ local PLACE_DELAY   = 0.45  -- seconds to wait for a window before moving it
 local OPEN_RETRY_INTERVAL = 0.25
 local OPEN_MAX_WAIT       = 3.0
 
--- Balanced grid surface (cols x rows) for n windows. The board always tiles an
+-- Balanced grid surface (cols x rows) for n windows. The box always tiles an
 -- even number of windows (see evenCount + the open/retile logic), and this packs
 -- an even count into a filled rectangle rather than a square with a gap:
 -- 4 -> 2x2, 6 -> 3x2, 8 -> 4x2, 12 -> 4x3, 16 -> 4x4. Wider than tall, which
@@ -291,7 +291,7 @@ end
 
 -- Conservative title match for the common chat windows ("New chat - Claude").
 -- This is the fallback signal when the browser can't be queried for URLs. Kept
--- narrow so a page like a GitHub repo titled "claude-board" is not swept in, but
+-- narrow so a page like a GitHub repo titled "claude-box" is not swept in, but
 -- it does NOT catch surfaces whose tab is titled "Claude Code" / "Claude Design"
 -- — the URL check below is what covers those.
 local function matchesClaudeTitleHeuristic(title)
@@ -305,14 +305,14 @@ end
 -- and return their (normalized) titles as a set. This is the URL-based signal:
 -- it recognizes any claude.ai surface — /new, /code, /design, /chat — regardless
 -- of how the tab is titled, and naturally ignores non-claude.ai pages (a
--- github.com repo called "claude-board" is not matched).
+-- github.com repo called "claude-box" is not matched).
 --
 -- Requires Hammerspoon to hold Automation permission for the browser (macOS
 -- prompts once). If that is denied, or the browser isn't running, this returns
 -- an empty set and detection falls back to matchesClaudeTitleHeuristic. We skip
 -- the query entirely when no browser is running so we never launch one just to
 -- ask. Only the active tab of each window is inspected, which is exactly right
--- for the board's single-tab app-mode windows.
+-- for the box's single-tab app-mode windows.
 local function claudeUrlTitleSet()
   if #browserApps() == 0 then return {} end
 
@@ -341,7 +341,7 @@ end tell
   return titles
 end
 
--- Is this browser window a Claude board window? Prefer the URL signal: if the
+-- Is this browser window a Claude Box window? Prefer the URL signal: if the
 -- browser reported a claude.ai window with this title, it counts whatever the
 -- title text is. Otherwise fall back to the title heuristic.
 local function isClaudeBrowserWindow(win, urlTitles)
@@ -354,22 +354,22 @@ local function isClaudeBrowserWindow(win, urlTitles)
   return matchesClaudeTitleHeuristic(raw:lower())
 end
 
-local function rememberBoardWindow(win)
+local function rememberBoxWindow(win)
   if not isLiveWindow(win) then return end
 
   local key = windowKey(win)
-  for _, existing in ipairs(BOARD_WINDOWS) do
+  for _, existing in ipairs(BOX_WINDOWS) do
     if isLiveWindow(existing) and windowKey(existing) == key then return end
   end
 
-  BOARD_WINDOWS[#BOARD_WINDOWS + 1] = win
+  BOX_WINDOWS[#BOX_WINDOWS + 1] = win
 end
 
-local function activeBoardWindows(limit)
+local function activeBoxWindows(limit)
   local wins = {}
   local seen = {}
 
-  for _, win in ipairs(BOARD_WINDOWS) do
+  for _, win in ipairs(BOX_WINDOWS) do
     local key = isLiveWindow(win) and windowKey(win) or nil
     if key and not seen[key] then
       wins[#wins + 1] = prepareWindow(win)
@@ -378,7 +378,7 @@ local function activeBoardWindows(limit)
     end
   end
 
-  BOARD_WINDOWS = wins
+  BOX_WINDOWS = wins
   return wins
 end
 
@@ -411,9 +411,9 @@ local function claudeBrowserWindows(limit)
   return wins
 end
 
--- Open one app-mode chat window, remember it as a board window, and invoke
+-- Open one app-mode chat window, remember it as a box window, and invoke
 -- callback(win) once it appears (callback(nil) if it never does). Every new tile
--- is created here, so openBoard and retileExisting share one "open, remember,
+-- is created here, so openBox and retileExisting share one "open, remember,
 -- then retile" shape.
 local function openChatWindow(url, callback)
   local previousIds = browserWindowIds()
@@ -422,7 +422,7 @@ local function openChatWindow(url, callback)
   local function grab(attemptsLeft)
     local win = newBrowserWindow(previousIds)
     if win then
-      rememberBoardWindow(win)
+      rememberBoxWindow(win)
       if callback then callback(win) end
       return
     end
@@ -442,11 +442,11 @@ local function openChatWindow(url, callback)
   end)
 end
 
--- Every Claude board window right now, deduped and ordered desktop-first: the
+-- Every Claude Box window right now, deduped and ordered desktop-first: the
 -- desktop app (only when it actually has a window to tile), then the remembered
--- board set, then any discovered claude.ai browser windows. Used both to count
--- the board before growing it and to gather the full set for a retile.
-local function currentBoardWindows()
+-- box set, then any discovered claude.ai browser windows. Used both to count
+-- the box before growing it and to gather the full set for a retile.
+local function currentBoxWindows()
   local wins = {}
   local seen = {}
 
@@ -460,7 +460,7 @@ local function currentBoardWindows()
 
   if desktopHasWindow() then add(desktopWindow()) end
 
-  for _, win in ipairs(activeBoardWindows()) do add(win) end
+  for _, win in ipairs(activeBoxWindows()) do add(win) end
   for _, win in ipairs(claudeBrowserWindows()) do add(win) end
 
   return wins
@@ -472,33 +472,33 @@ local function tileWindows(wins, screen)
   screen = screen or hs.screen.mainScreen()
   for i, w in ipairs(wins) do
     w:setFrame(cellFrame(i - 1, #wins, screen))
-    rememberBoardWindow(w)
+    rememberBoxWindow(w)
   end
 end
 
--- Gather the whole board and tile it into an EVEN grid: if the count is odd,
--- open one extra chat first, then tile. Shared by openBoard's finalization and
+-- Gather the whole box and tile it into an EVEN grid: if the count is odd,
+-- open one extra chat first, then tile. Shared by openBox's finalization and
 -- the retile hotkey so "the grid is always even" holds however we got here.
-local function tileBoardEven(screen, announce)
+local function tileBoxEven(screen, announce)
   screen = screen or hs.screen.mainScreen()
-  local wins = currentBoardWindows()
+  local wins = currentBoxWindows()
 
   local function report(all)
     if announce then
       hs.alert.show(string.format(
-        "Retiled %d Claude board window%s", #all, #all == 1 and "" or "s"))
+        "Retiled %d Claude Box window%s", #all, #all == 1 and "" or "s"))
     end
   end
 
   if #wins == 0 then
-    if announce then hs.alert.show("No Claude board windows found") end
+    if announce then hs.alert.show("No Claude Box windows found") end
     return
   end
 
   if #wins % 2 == 1 then
     openChatWindow(CLAUDE_URLS[1], function()
       hs.timer.doAfter(PLACE_DELAY, function()
-        local all = currentBoardWindows()
+        local all = currentBoxWindows()
         tileWindows(all, screen)
         report(all)
       end)
@@ -510,21 +510,21 @@ local function tileBoardEven(screen, announce)
   report(wins)
 end
 
--- Open a board and tile it into an even grid.
+-- Open a box and tile it into an even grid.
 --
--- Cold start (no board windows yet, or only the desktop app holding a slot):
--- fill up to BOARD_TILE_LIMIT, so with the desktop app open you get 1 desktop +
--- 3 chats = 4. Once a board already exists, each press stacks another ADD_BATCH
+-- Cold start (no box windows yet, or only the desktop app holding a slot):
+-- fill up to BOX_TILE_LIMIT, so with the desktop app open you get 1 desktop +
+-- 3 chats = 4. Once a box already exists, each press stacks another ADD_BATCH
 -- of chats on top (4 -> 8 -> 12). Either way the batch is topped up so the final
 -- count is even before tiling, and the closing retile enforces even once more in
 -- case a window failed to open — the grid is always even.
-local function openBoard()
+local function openBox()
   local screen = hs.screen.mainScreen()
-  local haveCount = #currentBoardWindows()
+  local haveCount = #currentBoxWindows()
 
   local newCount
   if haveCount <= 1 then
-    newCount = math.max(BOARD_TILE_LIMIT - haveCount, 0)
+    newCount = math.max(BOX_TILE_LIMIT - haveCount, 0)
   else
     newCount = ADD_BATCH
   end
@@ -533,16 +533,16 @@ local function openBoard()
   newCount = evenCount(haveCount + newCount) - haveCount
 
   if newCount <= 0 then
-    tileBoardEven(screen, false)
+    tileBoxEven(screen, false)
     return
   end
 
   -- Open chats one at a time (each recomputes the "new window" baseline), then
-  -- retile the whole board once the last one has landed.
+  -- retile the whole box once the last one has landed.
   local function openNext(i)
     if i > newCount then
       hs.timer.doAfter(PLACE_DELAY, function()
-        tileBoardEven(screen, false)
+        tileBoxEven(screen, false)
       end)
       return
     end
@@ -559,18 +559,18 @@ local function openBoard()
 end
 
 -- Re-tile Claude windows already open (desktop app first, then browser) into an
--- even grid. If the board holds an odd number of windows, one more chat is
+-- even grid. If the box holds an odd number of windows, one more chat is
 -- opened first so the grid stays even.
 local function retileExisting()
-  tileBoardEven(hs.screen.mainScreen(), true)
+  tileBoxEven(hs.screen.mainScreen(), true)
 end
 
--- Close Claude board windows without touching unrelated browser windows.
-local function closeBoard()
+-- Close Claude Box windows without touching unrelated browser windows.
+local function closeBox()
   local closed = 0
   local seen = {}
 
-  for _, win in ipairs(activeBoardWindows()) do
+  for _, win in ipairs(activeBoxWindows()) do
     local key = windowKey(win)
     if key and not seen[key] then
       win:close()
@@ -596,15 +596,15 @@ local function closeBoard()
     end
   end
 
-  BOARD_WINDOWS = {}
-  hs.alert.show(string.format("Closed %d Claude board window%s", closed, closed == 1 and "" or "s"))
+  BOX_WINDOWS = {}
+  hs.alert.show(string.format("Closed %d Claude Box window%s", closed, closed == 1 and "" or "s"))
 end
 
 ------------------------------------------------------------------------
 -- Hotkeys
 ------------------------------------------------------------------------
-hs.hotkey.bind({ "alt", "cmd" }, "C", openBoard)
+hs.hotkey.bind({ "alt", "cmd" }, "C", openBox)
 hs.hotkey.bind({ "alt", "cmd" }, "R", retileExisting)
-hs.hotkey.bind({ "alt", "cmd" }, "X", closeBoard)
+hs.hotkey.bind({ "alt", "cmd" }, "X", closeBox)
 
-hs.alert.show("Claude board loaded")
+hs.alert.show("Claude Box loaded")
