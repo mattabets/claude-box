@@ -45,6 +45,7 @@ even grid on your focused screen, driven by two hotkeys.
 | --- | --- |
 | **⌥⌘C** | Open your standing set of chats and tile them into a grid |
 | **⌥⌘R** | Re-tile Claude windows that are already open |
+| **⌥⌘X** | Close Claude board windows |
 
 ## Configuration
 
@@ -105,7 +106,8 @@ fresh open, `n` is capped by `BOARD_TILE_LIMIT`; when re-tiling existing windows
 the script also caps the board at `BOARD_TILE_LIMIT` and ignores non-Claude
 browser windows. Browser tiles open as app-mode windows
 (`open -na <browser> --args --app='<url>'`) for clean frames with no tabs or
-toolbar, then get moved into their cells.
+toolbar, then get moved into their cells. The close hotkey uses the same
+Claude-window filter, so unrelated Chrome windows are left alone.
 
 ## Why this approach
 

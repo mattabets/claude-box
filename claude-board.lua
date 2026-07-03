@@ -6,6 +6,7 @@
 -- Hotkeys:
 --   Opt+Cmd+C  -> open your standing set of chats and tile them into a grid
 --   Opt+Cmd+R  -> re-tile Claude windows that are already open
+--   Opt+Cmd+X  -> close Claude board windows
 
 hs.window.animationDuration = 0  -- instant snap, no slide animation
 
@@ -197,10 +198,33 @@ local function retileExisting()
   end
 end
 
+-- Close Claude board windows without touching unrelated browser windows.
+local function closeBoard()
+  local closed = 0
+  local dwin = desktopWindow()
+  if dwin then
+    dwin:close()
+    closed = closed + 1
+  end
+
+  local app = hs.application.get(BROWSER)
+  if app then
+    for _, w in ipairs(app:allWindows()) do
+      if isClaudeBrowserWindow(w) then
+        w:close()
+        closed = closed + 1
+      end
+    end
+  end
+
+  hs.alert.show(string.format("Closed %d Claude board window%s", closed, closed == 1 and "" or "s"))
+end
+
 ------------------------------------------------------------------------
 -- Hotkeys
 ------------------------------------------------------------------------
 hs.hotkey.bind({ "alt", "cmd" }, "C", openBoard)
 hs.hotkey.bind({ "alt", "cmd" }, "R", retileExisting)
+hs.hotkey.bind({ "alt", "cmd" }, "X", closeBoard)
 
 hs.alert.show("Claude board loaded")
